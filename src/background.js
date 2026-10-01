@@ -1,68 +1,49 @@
 // ============================================================
-//  Stream Community Player — Background Service Worker
+//  Stream Community Player — Background (Chrome + Firefox)
 // ============================================================
 "use strict";
 
-const TARGET_PATTERNS = [
-  "https://vixcloud.co/*",
-  "https://*.vixcloud.co/*",
-  "https://*.streamingcommunity.computer/*",
-  "https://*.streamingcommunityz.pictures/*",
-  "https://*.streamingcommunityz.website/*",
-  "https://*.streamingcommunity*/*",
-  "https://*.streamingunity.top/*",
-  "https://*.streamingunity.*/*"
-];
+const IS_FIREFOX = typeof browser !== "undefined" && browser.runtime && browser.runtime.getURL;
 
-async function applyContentSettings() {
-  for (const p of TARGET_PATTERNS) {
-    try {
-      await chrome.contentSettings.fullscreen.set({
-        primaryPattern: p,
-        setting: "allow"
-      });
-    } catch (e) {
-      console.warn("[SCP] contentSettings fail:", p, e.message);
-    }
-  }
-  console.log("[SCP] Content settings applicati per", TARGET_PATTERNS.length, "pattern");
-}
-
-chrome.runtime.onInstalled.addListener((details) => {
-  console.log("[SCP] Installato/aggiornato:", details.reason);
-  applyContentSettings();
-});
-
-chrome.runtime.onStartup.addListener(applyContentSettings);
-applyContentSettings();
-
-// ---------- Fullscreen via Window API ----------
-async function getTab(tabId) {
-  try { return await chrome.tabs.get(tabId); } catch { return null; }
-}
-
-async function setWindowFullscreen(tabId, on) {
-  const tab = await getTab(tabId);
-  if (!tab || tab.windowId == null) return false;
+// ============================================================
+//  FULLSCREEN (Chrome: contentSettings | Firefox: windows.update)
+// ============================================================
+async function enterFullscreen(tabId) {
   try {
-    await chrome.windows.update(tab.windowId, { state: on ? "fullscreen" : "normal" });
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || tab.windowId == null) return false;
+    await chrome.windows.update(tab.windowId, { state: "fullscreen" });
     return true;
   } catch (e) {
-    console.warn("[SCP] setWindowFullscreen fail:", e.message);
+    console.warn("[SCP] enterFullscreen fail:", e.message);
     return false;
   }
 }
 
-async function isWindowFullscreen(tabId) {
-  const tab = await getTab(tabId);
-  if (!tab || tab.windowId == null) return false;
+async function exitFullscreen(tabId) {
   try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || tab.windowId == null) return false;
+    await chrome.windows.update(tab.windowId, { state: "normal" });
+    return true;
+  } catch (e) {
+    console.warn("[SCP] exitFullscreen fail:", e.message);
+    return false;
+  }
+}
+
+async function isFullscreen(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab || tab.windowId == null) return false;
     const win = await chrome.windows.get(tab.windowId);
     return win.state === "fullscreen";
   } catch { return false; }
 }
 
-// ---------- Message router ----------
+// ============================================================
+//  MESSAGE ROUTER
+// ============================================================
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg.action !== "string") return;
   const tabId = sender.tab?.id;
@@ -70,24 +51,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.action) {
     case "enterFullscreen":
       if (tabId == null) { sendResponse({ ok: false }); return false; }
-      setWindowFullscreen(tabId, true).then(ok => sendResponse({ ok }));
+      enterFullscreen(tabId).then(ok => sendResponse({ ok }));
       return true;
 
     case "exitFullscreen":
       if (tabId == null) { sendResponse({ ok: false }); return false; }
-      setWindowFullscreen(tabId, false).then(ok => sendResponse({ ok }));
+      exitFullscreen(tabId).then(ok => sendResponse({ ok }));
       return true;
 
     case "toggleFullscreen":
       if (tabId == null) { sendResponse({ ok: false }); return false; }
-      isWindowFullscreen(tabId).then(isFs =>
-        setWindowFullscreen(tabId, !isFs).then(ok => sendResponse({ ok, fullscreen: !isFs }))
+      isFullscreen(tabId).then(isFs =>
+        (isFs ? exitFullscreen(tabId) : enterFullscreen(tabId))
+          .then(ok => sendResponse({ ok, fullscreen: !isFs }))
       );
       return true;
 
     case "isFullscreen":
       if (tabId == null) { sendResponse({ fullscreen: false }); return false; }
-      isWindowFullscreen(tabId).then(fs => sendResponse({ fullscreen: fs }));
+      isFullscreen(tabId).then(fs => sendResponse({ fullscreen: fs }));
       return true;
 
     case "getSettings":
@@ -96,9 +78,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         autoUnmute: true,
         autoNext: true,
         autoPlayInitial: true,
-        resume: true,
-        seekSecs: 5,
-        speed: 1
+        resume: true
       }).then(s => sendResponse(s));
       return true;
 
@@ -124,16 +104,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ---------- Propaga cambi fullscreen window a tutti i frame ----------
-chrome.windows.onBoundsChanged.addListener(async (win) => {
-  try {
-    const tabs = await chrome.tabs.query({ windowId: win.id });
-    for (const tab of tabs) {
-      if (!tab.id) continue;
-      chrome.tabs.sendMessage(tab.id, {
-        type: "vixbp:window-fullscreen-changed",
-        inFullscreen: win.state === "fullscreen"
-      }).catch(() => {});
-    }
-  } catch {}
-});
+// ============================================================
+//  PROPAGA FULLSCREEN (Firefox non ha onBoundsChanged)
+//  Usiamo un polling leggero ogni 500ms quando la finestra è attiva
+// ============================================================
+if (!IS_FIREFOX) {
+  // Chrome: usa onBoundsChanged
+  chrome.windows.onBoundsChanged.addListener(async (win) => {
+    try {
+      const tabs = await chrome.tabs.query({ windowId: win.id });
+      for (const tab of tabs) {
+        if (!tab.id) continue;
+        chrome.tabs.sendMessage(tab.id, {
+          type: "vixbp:window-fullscreen-changed",
+          inFullscreen: win.state === "fullscreen"
+        }).catch(() => {});
+      }
+    } catch {}
+  });
+} else {
+  // Firefox: polling fallback
+  let _lastState = {};
+  setInterval(async () => {
+    try {
+      const wins = await browser.windows.getAll();
+      for (const win of wins) {
+        const wasFs = _lastState[win.id];
+        const isFs = win.state === "fullscreen";
+        if (wasFs !== isFs) {
+          _lastState[win.id] = isFs;
+          const tabs = await browser.tabs.query({ windowId: win.id });
+          for (const tab of tabs) {
+            if (!tab.id) continue;
+            browser.tabs.sendMessage(tab.id, {
+              type: "vixbp:window-fullscreen-changed",
+              inFullscreen: isFs
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+  }, 500);
+}
+
+console.log("[SCP] Background attivo (Firefox:", IS_FIREFOX, ")");

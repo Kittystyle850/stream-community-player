@@ -10,6 +10,23 @@
   const isExtensionContext = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id;
 
   // ============================================================
+  //  SVG SAFE SETTER (evita innerHTML, compatibile Firefox AMO)
+  // ============================================================
+  const _svgParser = new DOMParser();
+  function safeSetSvg(element, svgString) {
+    if (!element || !svgString) return;
+    try {
+      element.textContent = "";
+      const doc = _svgParser.parseFromString(svgString, "image/svg+xml");
+      // Importa il nodo nel documento corrente
+      const imported = document.importNode(doc.documentElement, true);
+      element.appendChild(imported);
+    } catch (e) {
+      // Fallback: se il parsing SVG fallisce, non fare nulla
+    }
+  }
+
+  // ============================================================
   //  BRIDGE CON BACKGROUND
   // ============================================================
   window.__vixbpWindowFs = false;
@@ -300,7 +317,6 @@
     if (cls) e.className = cls;
     if (opts.id) e.id = opts.id;
     if (opts.text != null) e.textContent = opts.text;
-    if (opts.html != null) e.innerHTML = opts.html;
     if (opts.attrs) for (const k in opts.attrs) e.setAttribute(k, opts.attrs[k]);
     if (opts.style) Object.assign(e.style, opts.style);
     if (opts.on) for (const evt in opts.on) e.addEventListener(evt, opts.on[evt]);
@@ -362,7 +378,7 @@
     b.tabIndex = -1;
     const ico = document.createElement("span");
     ico.className = "vixbp-ico";
-    ico.innerHTML = iconHtml || "";
+    if (iconHtml) safeSetSvg(ico, iconHtml);
     b.appendChild(ico);
     if (tip) {
       const t = document.createElement("span");
@@ -373,7 +389,7 @@
     return { btn: b, ico };
   }
 
-  const setIcon = (ico, html) => { if (ico) ico.innerHTML = html; };
+  const setIcon = (ico, html) => { if (ico) safeSetSvg(ico, html); };
 
   const PRESERVE = [".next-episode", ".jw-icon-next", "[aria-label='Successivo']", "[aria-label='Prossimo episodio']"];
   function isPreserved(e) {
@@ -636,12 +652,24 @@
     bar.append(btnPlay, btnRestart, volGroup, timeEl, el("div", "vixbp-spacer"), btnNext, btnSettings, btnFs);
     controls.append(seekWrap, bar);
 
+    // ============================
+    //  SETTINGS PANEL
+    // ============================
     const settingsPanel = el("div", "vixbp-panel", { id: "vixbp-settings" });
     const settingsInner = el("div", "vixbp-pn-inner");
     const settingsBar = el("div", "vixbp-pn-bar");
-    settingsBar.append(el("div", "vixbp-pn-title", { html: IC.settings + "<span>Impostazioni</span>" }));
-    const settingsClose = el("button", "vixbp-pn-close", { html: IC.close });
-    settingsBar.append(settingsClose);
+
+    // Titolo con icona SVG (sicuro, senza innerHTML)
+    const settingsTitle = el("div", "vixbp-pn-title");
+    const settingsTitleIconWrap = el("span", "vixbp-ico");
+    safeSetSvg(settingsTitleIconWrap, IC.settings);
+    settingsTitle.append(settingsTitleIconWrap, el("span", { text: "Impostazioni" }));
+
+    // Bottone chiudi con icona SVG
+    const settingsClose = el("button", "vixbp-pn-close");
+    safeSetSvg(settingsClose, IC.close);
+
+    settingsBar.append(settingsTitle, settingsClose);
     const settingsBody = el("div", "vixbp-pn-body");
     settingsInner.append(settingsBar, settingsBody);
     settingsPanel.append(settingsInner);
@@ -703,11 +731,14 @@
       if (wasPlayingBeforePanel && video.paused) { video.play().catch(() => {}); wasPlayingBeforePanel = false; }
     });
 
+    // ============================
+    //  FLASH CENTER
+    // ============================
     const flash = el("div", "vixbp-flash");
-    flash.innerHTML = IC.play;
+    safeSetSvg(flash, IC.play);
     let flashTimer = null;
     const flashAt = (html, dur = 700) => {
-      flash.innerHTML = html;
+      safeSetSvg(flash, html);
       flash.classList.add("on");
       clearTimeout(flashTimer);
       flashTimer = setTimeout(() => flash.classList.remove("on"), dur);
@@ -721,6 +752,9 @@
 
     wrap.append(controls, flash, settingsPanel, switching);
 
+    // ============================
+    //  VIDEO EVENTS
+    // ============================
     video.addEventListener("timeupdate", () => {
       if (seeking || !video.duration) return;
       const p = video.currentTime / video.duration * 100;
@@ -760,6 +794,9 @@
     window.addEventListener("vixbp:fs-changed", updateFsIcon);
     updateFsIcon();
 
+    // ============================
+    //  BUTTONS
+    // ============================
     const toggle = () => video.paused ? video.play().catch(() => {}) : video.pause();
     btnPlay.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; toggle(); });
     btnRestart.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; video.currentTime = 0; video.play().catch(() => {}); flashAt(IC.restart); });
@@ -774,6 +811,9 @@
     btnNext.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; triggerNext("button"); });
     btnFs.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; fsToggle(); });
 
+    // ============================
+    //  NEXT EPISODE
+    // ============================
     let _nextBusy = false;
     async function triggerNext() {
       if (_nextBusy) return false;
@@ -821,6 +861,9 @@
       return false;
     }
 
+    // ============================
+    //  COUCH MODE (load embed in place)
+    // ============================
     window.addEventListener("message", async (e) => {
       const d = e.data;
       if (!d || typeof d.type !== "string") return;
@@ -856,6 +899,9 @@
       }
     });
 
+    // ============================
+    //  RESUME
+    // ============================
     const resumeKey = () => RESUME_PFX + RESUME_CTX;
     function attemptResume() {
       if (SETTINGS_CACHE.resume === false) return;
@@ -880,6 +926,9 @@
     video.addEventListener("ended", () => { clearInterval(saveTimer); saveTimer = null; lsDel(resumeKey()); });
     window.addEventListener("beforeunload", saveNow);
 
+    // ============================
+    //  UI SHOW/HIDE
+    // ============================
     document.addEventListener("mousemove", (e) => {
       if (isPanelOpen) return;
       const r = wrap.getBoundingClientRect();
@@ -903,6 +952,9 @@
       btnFs.click();
     }, true);
 
+    // ============================
+    //  HOTKEYS
+    // ============================
     document.addEventListener("keydown", (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = document.activeElement?.tagName ?? "";
@@ -929,6 +981,9 @@
       if (k === "n") { e.preventDefault(); btnNext.click(); return; }
     }, true);
 
+    // ============================
+    //  AUTOPLAY INIZIALE
+    // ============================
     const startAutoplay = () => {
       if (SETTINGS_CACHE.autoPlayInitial === false) return;
       try {

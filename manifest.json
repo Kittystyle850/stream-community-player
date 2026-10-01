@@ -9,18 +9,21 @@
   "permissions": [
     "storage",
     "scripting",
-    "tabs",
-    "windows",
-    "contentSettings"
+    "tabs"
   ],
   "host_permissions": [
     "*://vixcloud.co/*",
     "*://*.vixcloud.co/*",
-    "*://*.streamingcommunity*/*",
-    "*://*.streamingunity*/*"
+    "*://*.streamingcommunity.computer/*",
+    "*://*.streamingcommunityz.pictures/*",
+    "*://*.streamingcommunityz.website/*",
+    "*://*.streamingunity.top/*",
+    "*://*.streamingunity.*/*"
   ],
   "background": {
-    "service_worker": "src/background.js"
+    "service_worker": "src/background.js",
+    "scripts": ["src/background.js"],
+    "type": "module"
   },
   "action": {
     "default_popup": "src/popup.html",
@@ -36,8 +39,11 @@
       "matches": [
         "*://vixcloud.co/*",
         "*://*.vixcloud.co/*",
-        "*://*.streamingcommunity*/*",
-        "*://*.streamingunity*/*"
+        "*://*.streamingcommunity.computer/*",
+        "*://*.streamingcommunityz.pictures/*",
+        "*://*.streamingcommunityz.website/*",
+        "*://*.streamingunity.top/*",
+        "*://*.streamingunity.*/*"
       ],
       "js": ["src/content.js"],
       "css": ["src/content.css"],
@@ -49,6 +55,16 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "stream-community-player@kittystyle850.github.io",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    }
   },
   "minimum_chrome_version": "110"
 }
