@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Installa Stream Community Player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f1014;
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    line-height: 1.6;
+  }
+  .container { max-width: 700px; width: 100%; }
+  .hero { text-align: center; margin-bottom: 40px; }
+  .hero .icon {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, #1565c0, #42a5f5);
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(66,165,245,.3);
+  }
+  .hero h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .hero p { color: #8a8f98; font-size: 16px; }
+  .install-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    padding: 20px 32px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #1565c0, #42a5f5);
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .2s;
+    box-shadow: 0 4px 20px rgba(66,165,245,.4);
+    margin-bottom: 12px;
+  }
+  .install-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(66,165,245,.5); }
+  .install-btn:active { transform: translateY(0); }
+  .install-btn svg { width: 24px; height: 24px; fill: #fff; }
+  .version-info {
+    text-align: center;
+    color: #8a8f98;
+    font-size: 13px;
+    margin-bottom: 32px;
+  }
+  .guide {
+    background: #1b1c1f;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px;
+    padding: 24px;
+    display: none;
+  }
+  .guide.visible { display: block; animation: slideIn .4s ease; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .guide h2 {
+    font-size: 18px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .guide h2::before {
+    content: "";
+    width: 8px; height: 8px;
+    background: #42a5f5;
+    border-radius: 50%;
+  }
+  .step {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    flex-shrink: 0;
+    width: 32px; height: 32px;
+    background: rgba(66,165,245,.15);
+    color: #42a5f5;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .step-content { flex: 1; }
+  .step-content h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .step-content p { font-size: 13px; color: #8a8f98; }
+  .step-content a {
+    color: #42a5f5;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .step-content a:hover { text-decoration: underline; }
+  .step-content code {
+    background: rgba(255,255,255,.08);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: monospace;
+    color: #42a5f5;
+  }
+  .done-check {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(76,175,80,.12);
+    border: 1px solid rgba(76,175,80,.3);
+    border-radius: 12px;
+    margin-top: 20px;
+    font-size: 14px;
+    color: #81c784;
+  }
+  .done-check.visible { display: flex; }
+  .footer {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 12px;
+    color: #5a5f68;
+  }
+  .footer a { color: #8a8f98; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <div class="icon">▶</div>
+      <h1>Stream Community Player</h1>
+      <p>Player stile Netflix per StreamingCommunity e VixCloud</p>
+    </div>
+
+    <button class="install-btn" id="installBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+      <span>Installa l'estensione</span>
+    </button>
+
+    <div class="version-info">
+      Versione <span id="version">1.0.0</span> · <span id="size">~50 KB</span>
+    </div>
+
+    <div class="guide" id="guide">
+      <h2>Segui questi passaggi</h2>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h3>✅ ZIP scaricato</h3>
+          <p>Trova il file <code>stream-community-player.zip</code> nella cartella Download e <strong>estrailo</strong> in una cartella a tua scelta.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h3>Apri la pagina delle estensioni</h3>
+          <p>Incolla questo indirizzo nella barra di Chrome: <a href="chrome://extensions" target="_blank"><code>chrome://extensions</code></a></p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h3>Attiva Modalità Sviluppatore</h3>
+          <p>In alto a destra nella pagina, attiva l'interruttore <strong>"Modalità sviluppatore"</strong>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h3>Carica l'estensione</h3>
+          <p>Clicca <strong>"Carica estensione non pacchettizzata"</strong> e seleziona la <strong>cartella</strong> che hai estratto al passo 1.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <h3>Fatto! 🎉</h3>
+          <p>Ricarica la pagina di StreamingCommunity. Il player partirà automaticamente con audio e fullscreen.</p>
+        </div>
+      </div>
+
+      <div class="done-check" id="doneCheck">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#81c784"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        <span id="doneText">Estensione installata correttamente!</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="https://github.com/Kittystyle850/stream-community-player">GitHub</a> ·
+      <a href="https://github.com/Kittystyle850/stream-community-player/releases">Releases</a> ·
+      MIT License
+    </div>
+  </div>
+
+  <script>
+    const REPO = "Kittystyle850/stream-community-player";
+    const VERSION = "1.0.0";
+    document.getElementById("version").textContent = VERSION;
+
+    const installBtn = document.getElementById("installBtn");
+    const guide = document.getElementById("guide");
+    const doneCheck = document.getElementById("doneCheck");
+    const doneText = document.getElementById("doneText");
+
+    installBtn.addEventListener("click", () => {
+      const zipUrl = `https://github.com/${REPO}/releases/latest/download/stream-community-player.zip`;
+      const a = document.createElement("a");
+      a.href = zipUrl;
+      a.download = "stream-community-player.zip";
+      a.click();
+
+      guide.classList.add("visible");
+      setTimeout(() => {
+        guide.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 200);
+
+      installBtn.querySelector("span").textContent = "ZIP scaricato ✓";
+      installBtn.style.background = "linear-gradient(135deg, #2e7d32, #4caf50)";
+
+      setTimeout(() => {
+        doneCheck.classList.add("visible");
+        doneText.textContent = "ZIP scaricato! Ora segui i passaggi sotto.";
+      }, 3000);
+    });
+  </script>
+</body>
+</html>
