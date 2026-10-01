@@ -6,7 +6,7 @@
 const IS_FIREFOX = typeof browser !== "undefined" && browser.runtime && browser.runtime.getURL;
 
 // ============================================================
-//  FULLSCREEN (Chrome: contentSettings | Firefox: windows.update)
+//  FULLSCREEN
 // ============================================================
 async function enterFullscreen(tabId) {
   try {
@@ -105,25 +105,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ============================================================
-//  PROPAGA FULLSCREEN (Firefox non ha onBoundsChanged)
-//  Usiamo un polling leggero ogni 500ms quando la finestra è attiva
+//  PROPAGA FULLSCREEN (Chrome vs Firefox)
 // ============================================================
 if (!IS_FIREFOX) {
-  // Chrome: usa onBoundsChanged
-  chrome.windows.onBoundsChanged.addListener(async (win) => {
-    try {
-      const tabs = await chrome.tabs.query({ windowId: win.id });
-      for (const tab of tabs) {
-        if (!tab.id) continue;
-        chrome.tabs.sendMessage(tab.id, {
-          type: "vixbp:window-fullscreen-changed",
-          inFullscreen: win.state === "fullscreen"
-        }).catch(() => {});
-      }
-    } catch {}
-  });
+  // Chrome: usa onBoundsChanged se disponibile
+  if (chrome.windows && typeof chrome.windows.onBoundsChanged !== "undefined") {
+    chrome.windows.onBoundsChanged.addListener(async (win) => {
+      try {
+        const tabs = await chrome.tabs.query({ windowId: win.id });
+        for (const tab of tabs) {
+          if (!tab.id) continue;
+          chrome.tabs.sendMessage(tab.id, {
+            type: "vixbp:window-fullscreen-changed",
+            inFullscreen: win.state === "fullscreen"
+          }).catch(() => {});
+        }
+      } catch {}
+    });
+  }
 } else {
-  // Firefox: polling fallback
+  // Firefox: polling fallback (onBoundsChanged non esiste)
   let _lastState = {};
   setInterval(async () => {
     try {
