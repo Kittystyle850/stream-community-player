@@ -36,7 +36,6 @@ jobs:
           VERSION=$(node -p "require('./manifest.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Controlla se il tag esiste già
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "ℹ️ Tag v$VERSION già esistente — skip release"
             echo "should_release=false" >> $GITHUB_OUTPUT
@@ -144,12 +143,3 @@ jobs:
 
             ### ✨ Cosa c'è di nuovo
             Vedi [CHANGELOG.md](https://github.com/Kittystyle850/stream-community-player/blob/main/CHANGELOG.md)
-
-      - name: Riepilogo finale
-        run: |
-          echo "## ✅ Release completata!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Versione**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Release**: https://github.com/Kittystyle850/stream-community-player/releases/tag/v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **AMO**: in review (1-2 giorni)" >> $GITHUB_STEP_SUMMARY
