@@ -9,26 +9,17 @@
   const isScIframe = isScHost && !isTop;
   const isExtensionContext = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id;
 
-  // ============================================================
-  //  SVG SAFE SETTER (evita innerHTML, compatibile Firefox AMO)
-  // ============================================================
   const _svgParser = new DOMParser();
   function safeSetSvg(element, svgString) {
     if (!element || !svgString) return;
     try {
       element.textContent = "";
       const doc = _svgParser.parseFromString(svgString, "image/svg+xml");
-      // Importa il nodo nel documento corrente
       const imported = document.importNode(doc.documentElement, true);
       element.appendChild(imported);
-    } catch (e) {
-      // Fallback: se il parsing SVG fallisce, non fare nulla
-    }
+    } catch (e) {}
   }
 
-  // ============================================================
-  //  BRIDGE CON BACKGROUND
-  // ============================================================
   window.__vixbpWindowFs = false;
   const SETTINGS_CACHE = {};
   let settingsLoaded = false;
@@ -54,14 +45,6 @@
     });
 
     try {
-      chrome.runtime.sendMessage({ action: "isFullscreen" }, (res) => {
-        if (res && typeof res.fullscreen === "boolean") {
-          window.__vixbpWindowFs = res.fullscreen;
-          window.dispatchEvent(new CustomEvent("vixbp:fs-changed", {
-            detail: { fullscreen: res.fullscreen }
-          }));
-        }
-      });
       chrome.runtime.sendMessage({ action: "getSettings" }, (s) => {
         if (s) Object.assign(SETTINGS_CACHE, s);
         settingsLoaded = true;
@@ -77,41 +60,76 @@
     settingsWaiters.push(cb);
   }
 
-  const fsElement = () => window.__vixbpWindowFs ? document.documentElement : null;
-  const fsExit = () => new Promise((resolve) => {
-    if (!isExtensionContext) { document.exitFullscreen?.().then(() => resolve(true)).catch(() => resolve(false)); return; }
-    try { chrome.runtime.sendMessage({ action: "exitFullscreen" }, (res) => resolve(!!(res && res.ok))); }
-    catch { resolve(false); }
-  });
-  const fsToggle = () => new Promise((resolve) => {
-    if (!isExtensionContext) { resolve(false); return; }
-    try { chrome.runtime.sendMessage({ action: "toggleFullscreen" }, (res) => resolve(!!(res && res.ok))); }
-    catch { resolve(false); }
-  });
+  const fsExit = () => {
+    if (document.fullscreenElement) {
+      const fn = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen;
+      if (fn) { try { fn.call(document).catch(() => {}); } catch {} }
+    }
+    if (isExtensionContext) {
+      try { chrome.runtime.sendMessage({ action: "exitFullscreen" }, () => {}); } catch {}
+    }
+    return Promise.resolve(true);
+  };
+
+  const fsToggle = () => {
+    if (document.fullscreenElement || window.__vixbpWindowFs) {
+      return fsExit();
+    }
+    const player = document.querySelector(".jwplayer") || document.documentElement;
+    const fn = player.requestFullscreen || player.webkitRequestFullscreen || player.mozRequestFullScreen;
+    if (!fn) {
+      if (isExtensionContext) {
+        try { chrome.runtime.sendMessage({ action: "enterFullscreen" }, () => {}); } catch {}
+      }
+      return Promise.resolve(false);
+    }
+    try {
+      return Promise.resolve(fn.call(player))
+        .then(() => true)
+        .catch(() => {
+          if (isExtensionContext) {
+            try { chrome.runtime.sendMessage({ action: "enterFullscreen" }, () => {}); } catch {}
+          }
+          return false;
+        });
+    } catch (e) {
+      return Promise.resolve(false);
+    }
+  };
 
   function requestPlayerFullscreenSync(video) {
-    if (window.__vixbpWindowFs) return;
+    if (document.fullscreenElement || window.__vixbpWindowFs) return;
+
     try {
       if (typeof window.jwplayer === "function") {
         const jw = window.jwplayer();
         if (jw && typeof jw.setFullscreen === "function") {
-          try { jw.setFullscreen(true); } catch {}
+          try { jw.setFullscreen(true); return; } catch {}
         }
       }
     } catch {}
+
+    try {
+      const player = document.querySelector(".jwplayer") || (video && video.parentElement);
+      if (player) {
+        const fn = player.requestFullscreen || player.webkitRequestFullscreen || player.mozRequestFullScreen;
+        if (fn) {
+          Promise.resolve(fn.call(player)).catch(() => {
+            if (isExtensionContext) {
+              try { chrome.runtime.sendMessage({ action: "enterFullscreen" }, () => {}); } catch {}
+            }
+          });
+          return;
+        }
+      }
+    } catch {}
+
     if (isExtensionContext) {
       try { chrome.runtime.sendMessage({ action: "enterFullscreen" }, () => {}); } catch {}
-    } else {
-      try {
-        const c = document.querySelector(".jwplayer") || (video && video.parentElement);
-        if (c) c.requestFullscreen?.().catch(() => {});
-      } catch {}
     }
   }
 
-  // ============================================================
-  //  MASTER PLAYLIST CAPTURE
-  // ============================================================
+  // MASTER PLAYLIST CAPTURE
   if (isVixcloud) {
     window.__vixbpLastManifest = null;
     window.__vixbpRenditions = [];
@@ -176,9 +194,7 @@
     } catch {}
   }
 
-  // ============================================================
-  //  BRIDGE (SC iframe)
-  // ============================================================
+  // BRIDGE (SC iframe)
   if (isScIframe) {
     window.addEventListener("message", (e) => {
       if (!e.origin || !e.origin.includes("vixcloud")) return;
@@ -204,9 +220,7 @@
     return;
   }
 
-  // ============================================================
-  //  CONTROLLER (SC top)
-  // ============================================================
+  // CONTROLLER (SC top)
   if (isTop && isScHost) {
     function findNextUrl() {
       const curUrl = new URL(location.href);
@@ -293,9 +307,7 @@
 
   if (!isVixcloud) return;
 
-  // ============================================================
-  //  PLAYER UI
-  // ============================================================
+  // PLAYER UI
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch {} };
@@ -536,7 +548,7 @@
       document.addEventListener("pointerdown", h, true);
       document.addEventListener("keydown", h, true);
       document.addEventListener("touchstart", h, true);
-    }, 250);
+    }, 500);
   }
 
   function buildUI(video) {
@@ -652,23 +664,15 @@
     bar.append(btnPlay, btnRestart, volGroup, timeEl, el("div", "vixbp-spacer"), btnNext, btnSettings, btnFs);
     controls.append(seekWrap, bar);
 
-    // ============================
-    //  SETTINGS PANEL
-    // ============================
     const settingsPanel = el("div", "vixbp-panel", { id: "vixbp-settings" });
     const settingsInner = el("div", "vixbp-pn-inner");
     const settingsBar = el("div", "vixbp-pn-bar");
-
-    // Titolo con icona SVG (sicuro, senza innerHTML)
     const settingsTitle = el("div", "vixbp-pn-title");
     const settingsTitleIconWrap = el("span", "vixbp-ico");
     safeSetSvg(settingsTitleIconWrap, IC.settings);
     settingsTitle.append(settingsTitleIconWrap, el("span", { text: "Impostazioni" }));
-
-    // Bottone chiudi con icona SVG
     const settingsClose = el("button", "vixbp-pn-close");
     safeSetSvg(settingsClose, IC.close);
-
     settingsBar.append(settingsTitle, settingsClose);
     const settingsBody = el("div", "vixbp-pn-body");
     settingsInner.append(settingsBar, settingsBody);
@@ -731,9 +735,6 @@
       if (wasPlayingBeforePanel && video.paused) { video.play().catch(() => {}); wasPlayingBeforePanel = false; }
     });
 
-    // ============================
-    //  FLASH CENTER
-    // ============================
     const flash = el("div", "vixbp-flash");
     safeSetSvg(flash, IC.play);
     let flashTimer = null;
@@ -752,9 +753,6 @@
 
     wrap.append(controls, flash, settingsPanel, switching);
 
-    // ============================
-    //  VIDEO EVENTS
-    // ============================
     video.addEventListener("timeupdate", () => {
       if (seeking || !video.duration) return;
       const p = video.currentTime / video.duration * 100;
@@ -787,16 +785,16 @@
     });
 
     const updateFsIcon = () => {
-      const fs = window.__vixbpWindowFs;
+      const fs = !!(document.fullscreenElement || window.__vixbpWindowFs);
       setIcon(icoFs, fs ? IC.fsOff : IC.fsOn);
       wrap.classList.toggle("fs", fs);
     };
     window.addEventListener("vixbp:fs-changed", updateFsIcon);
+    ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange"].forEach(ev => {
+      document.addEventListener(ev, updateFsIcon);
+    });
     updateFsIcon();
 
-    // ============================
-    //  BUTTONS
-    // ============================
     const toggle = () => video.paused ? video.play().catch(() => {}) : video.pause();
     btnPlay.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; toggle(); });
     btnRestart.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; video.currentTime = 0; video.play().catch(() => {}); flashAt(IC.restart); });
@@ -809,11 +807,12 @@
       lsSet("vixbp-muted", String(video.muted));
     });
     btnNext.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; triggerNext("button"); });
-    btnFs.addEventListener("click", (e) => { e.stopPropagation(); if (isPanelOpen) return; fsToggle(); });
+    btnFs.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (isPanelOpen) return;
+      fsToggle();
+    });
 
-    // ============================
-    //  NEXT EPISODE
-    // ============================
     let _nextBusy = false;
     async function triggerNext() {
       if (_nextBusy) return false;
@@ -861,9 +860,6 @@
       return false;
     }
 
-    // ============================
-    //  COUCH MODE (load embed in place)
-    // ============================
     window.addEventListener("message", async (e) => {
       const d = e.data;
       if (!d || typeof d.type !== "string") return;
@@ -899,9 +895,6 @@
       }
     });
 
-    // ============================
-    //  RESUME
-    // ============================
     const resumeKey = () => RESUME_PFX + RESUME_CTX;
     function attemptResume() {
       if (SETTINGS_CACHE.resume === false) return;
@@ -926,9 +919,6 @@
     video.addEventListener("ended", () => { clearInterval(saveTimer); saveTimer = null; lsDel(resumeKey()); });
     window.addEventListener("beforeunload", saveNow);
 
-    // ============================
-    //  UI SHOW/HIDE
-    // ============================
     document.addEventListener("mousemove", (e) => {
       if (isPanelOpen) return;
       const r = wrap.getBoundingClientRect();
@@ -952,14 +942,17 @@
       btnFs.click();
     }, true);
 
-    // ============================
-    //  HOTKEYS
-    // ============================
     document.addEventListener("keydown", (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = document.activeElement?.tagName ?? "";
       if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
       const k = (e.key || "").toLowerCase();
+
+      if (e.key === "Escape" && document.fullscreenElement) {
+        e.preventDefault();
+        fsExit();
+        return;
+      }
 
       if (isPanelOpen) {
         if (e.key === "Escape") {
@@ -981,22 +974,23 @@
       if (k === "n") { e.preventDefault(); btnNext.click(); return; }
     }, true);
 
-    // ============================
-    //  AUTOPLAY INIZIALE
-    // ============================
     const startAutoplay = () => {
       if (SETTINGS_CACHE.autoPlayInitial === false) return;
+
       try {
-        video.muted = true;
-        video.play().catch(() => {});
+        video.muted = false;
+        video.volume = settings.vol;
+        const p = video.play();
+        if (p && p.catch) {
+          p.catch(() => {
+            try { video.muted = true; video.play().catch(() => {}); } catch {}
+            setTimeout(() => tryUnmute(video, wrap, settings.vol), 500);
+          });
+        }
       } catch {}
 
-      if (SETTINGS_CACHE.autoUnmute !== false) {
-        setTimeout(() => tryUnmute(video, wrap, settings.vol), 2000);
-      }
-
       if (SETTINGS_CACHE.autoFullscreen !== false) {
-        setTimeout(() => requestPlayerFullscreenSync(video), 1500);
+        setTimeout(() => requestPlayerFullscreenSync(video), 800);
       }
     };
 
@@ -1020,9 +1014,6 @@
     return wrap;
   }
 
-  // ============================================================
-  //  BOOTSTRAP
-  // ============================================================
   let _videoWrapped = null;
   function tryWrapVideo() {
     if (_videoWrapped && document.contains(_videoWrapped) && _videoWrapped.__vixbpWrapped) return;

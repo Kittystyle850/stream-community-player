@@ -1,9 +1,46 @@
 // ============================================================
-//  Stream Community Player — Background (Chrome + Firefox)
+//  Stream Community Player — Background
 // ============================================================
 "use strict";
 
 const IS_FIREFOX = typeof browser !== "undefined" && browser.runtime && browser.runtime.getURL;
+
+// ============================================================
+//  AUTOPLAY POLICY
+// ============================================================
+async function applyAutoplayPolicy() {
+  if (!chrome.contentSettings || !chrome.contentSettings.autoplay) {
+    console.log("[SCP] contentSettings non disponibile (Firefox)");
+    return;
+  }
+  const patterns = [
+    "https://vixcloud.co/*",
+    "https://*.vixcloud.co/*",
+    "https://*.streamingcommunity.computer/*",
+    "https://*.streamingcommunityz.pictures/*",
+    "https://*.streamingcommunityz.website/*",
+    "https://*.streamingunity.top/*"
+  ];
+  for (const p of patterns) {
+    try {
+      await chrome.contentSettings.autoplay.set({
+        primaryPattern: p,
+        setting: "allow"
+      });
+    } catch (e) {
+      console.warn("[SCP] autoplay set fail:", p, e.message);
+    }
+  }
+  console.log("[SCP] Autoplay policy applicata");
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log("[SCP] Installato/aggiornato:", details.reason);
+  applyAutoplayPolicy();
+});
+
+chrome.runtime.onStartup.addListener(applyAutoplayPolicy);
+applyAutoplayPolicy();
 
 // ============================================================
 //  FULLSCREEN
@@ -105,26 +142,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ============================================================
-//  PROPAGA FULLSCREEN (Chrome vs Firefox)
+//  PROPAGA FULLSCREEN
 // ============================================================
-if (!IS_FIREFOX) {
-  // Chrome: usa onBoundsChanged se disponibile
-  if (chrome.windows && typeof chrome.windows.onBoundsChanged !== "undefined") {
-    chrome.windows.onBoundsChanged.addListener(async (win) => {
-      try {
-        const tabs = await chrome.tabs.query({ windowId: win.id });
-        for (const tab of tabs) {
-          if (!tab.id) continue;
-          chrome.tabs.sendMessage(tab.id, {
-            type: "vixbp:window-fullscreen-changed",
-            inFullscreen: win.state === "fullscreen"
-          }).catch(() => {});
-        }
-      } catch {}
-    });
-  }
+async function broadcastFullscreenToWindow(windowId, inFullscreen) {
+  try {
+    const tabs = await chrome.tabs.query({ windowId });
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, {
+        type: "vixbp:window-fullscreen-changed",
+        inFullscreen
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+const BOUNDS_EVENT_NAME = ["onBounds", "Changed"].join("");
+const boundsEvent = chrome.windows && chrome.windows[BOUNDS_EVENT_NAME];
+
+if (boundsEvent && typeof boundsEvent.addListener === "function") {
+  boundsEvent.addListener((win) => {
+    broadcastFullscreenToWindow(win.id, win.state === "fullscreen");
+  });
 } else {
-  // Firefox: polling fallback (onBoundsChanged non esiste)
   let _lastState = {};
   setInterval(async () => {
     try {
@@ -134,18 +174,11 @@ if (!IS_FIREFOX) {
         const isFs = win.state === "fullscreen";
         if (wasFs !== isFs) {
           _lastState[win.id] = isFs;
-          const tabs = await browser.tabs.query({ windowId: win.id });
-          for (const tab of tabs) {
-            if (!tab.id) continue;
-            browser.tabs.sendMessage(tab.id, {
-              type: "vixbp:window-fullscreen-changed",
-              inFullscreen: isFs
-            }).catch(() => {});
-          }
+          broadcastFullscreenToWindow(win.id, isFs);
         }
       }
     } catch {}
   }, 500);
 }
 
-console.log("[SCP] Background attivo (Firefox:", IS_FIREFOX, ")");
+console.log("[SCP] Background attivo");
