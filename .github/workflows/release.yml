@@ -1,19 +1,59 @@
-name: Release
+name: Auto Release & Publish
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'manifest.json'
+      - 'src/**'
+      - 'icons/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  detect-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verifica se la versione è nuova
+        id: check
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Controlla se il tag esiste già
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "ℹ️ Tag v$VERSION già esistente — skip release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Nuova versione rilevata: v$VERSION"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
   build-and-release:
+    needs: detect-version
+    if: needs.detect-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,25 +74,14 @@ jobs:
           test -f icons/icon128.png
           echo "✅ Struttura OK"
 
-      - name: Leggi versione dal manifest
+      - name: Leggi versione
         id: version
         run: |
           VERSION=$(node -p "require('./manifest.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Versione: $VERSION"
 
-      - name: Verifica tag corrisponde a versione
-        run: |
-          TAG="${{ github.ref_name }}"
-          TAG_NO_V="${TAG#v}"
-          MANIFEST_V="${{ steps.version.outputs.version }}"
-          if [ "$TAG_NO_V" != "$MANIFEST_V" ]; then
-            echo "❌ Tag ($TAG_NO_V) diverso da manifest version ($MANIFEST_V)"
-            exit 1
-          fi
-          echo "✅ Tag e versione corrispondono"
-
-      - name: Crea ZIP (solo file necessari per AMO)
+      - name: Crea ZIP per il rilascio
         run: |
           zip -r stream-community-player.zip \
             manifest.json \
@@ -76,9 +105,23 @@ jobs:
             --no-config-discovery \
             --ignore-files=".github/**" "tools/**" "install.html" "README.md" "LICENSE" "CHANGELOG.md" "PRIVACY.md" "*.zip" "web-ext-artifacts/**" ".gitignore"
 
-      - name: Crea GitHub Release
+      - name: Configura Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Crea tag automatico
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "✅ Tag $TAG creato e pushato"
+
+      - name: Crea GitHub Release con allegati
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Stream Community Player v${{ steps.version.outputs.version }}"
           files: |
             stream-community-player.zip
             web-ext-artifacts/*.xpi
@@ -89,7 +132,7 @@ jobs:
             ### 📦 Installazione
 
             **Firefox** (automatica):
-            👉 [Installa da AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
+            👉 [Installa da Firefox AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
 
             **Brave / Chrome / Edge** (manuale):
             1. Scarica `stream-community-player.zip` qui sotto
@@ -100,4 +143,13 @@ jobs:
             6. Seleziona la cartella
 
             ### ✨ Cosa c'è di nuovo
-            Vedi [CHANGELOG.md](CHANGELOG.md)
+            Vedi [CHANGELOG.md](https://github.com/Kittystyle850/stream-community-player/blob/main/CHANGELOG.md)
+
+      - name: Riepilogo finale
+        run: |
+          echo "## ✅ Release completata!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Versione**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release**: https://github.com/Kittystyle850/stream-community-player/releases/tag/v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **AMO**: in review (1-2 giorni)" >> $GITHUB_STEP_SUMMARY
