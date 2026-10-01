@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Stream Community Player",
   "short_name": "SC Player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Player stile Netflix per StreamingCommunity e VixCloud: fullscreen automatico, autoplay con audio, UI moderna, risoluzioni reali.",
   "author": "Kittystyle850",
   "homepage_url": "https://github.com/Kittystyle850/stream-community-player",
@@ -22,7 +22,9 @@
   ],
   "background": {
     "service_worker": "src/background.js",
-    "scripts": ["src/background.js"]
+    "scripts": [
+      "src/background.js"
+    ]
   },
   "action": {
     "default_popup": "src/popup.html",
@@ -43,8 +45,12 @@
         "*://*.streamingcommunityz.website/*",
         "*://*.streamingunity.top/*"
       ],
-      "js": ["src/content.js"],
-      "css": ["src/content.css"],
+      "js": [
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
@@ -59,7 +65,9 @@
       "id": "stream-community-player@kittystyle850.github.io",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"],
+        "required": [
+          "none"
+        ],
         "optional": []
       }
     }
