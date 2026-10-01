@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verifica struttura
+        run: |
+          test -f manifest.json
+          test -f src/background.js
+          test -f src/content.js
+          test -f src/content.css
+          test -f src/popup.html
+          test -f src/popup.js
+          test -d icons
+          echo "✅ Struttura OK"
+
+      - name: Crea ZIP
+        run: |
+          zip -r stream-community-player.zip \
+            manifest.json \
+            src/ \
+            icons/ \
+            README.md \
+            LICENSE \
+            CHANGELOG.md
+
+      - name: Crea Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: stream-community-player.zip
+          generate_release_notes: true
+          body: |
+            ## 🎬 Stream Community Player ${{ github.ref_name }}
+
+            ### Installazione rapida
+            1. Scarica `stream-community-player.zip` qui sotto
+            2. Estrai in una cartella
+            3. Apri `chrome://extensions`
+            4. Attiva **Modalità sviluppatore**
+            5. Clicca **Carica estensione non pacchettizzata**
+            6. Seleziona la cartella estratta
+            7. Ricarica StreamingCommunity ✅
+
+            ### Cosa c'è di nuovo
+            Vedi il changelog completo nel repository.
