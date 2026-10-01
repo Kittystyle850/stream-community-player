@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,6 +29,9 @@ jobs:
           test -f src/popup.html
           test -f src/popup.js
           test -d icons
+          test -f icons/icon16.png
+          test -f icons/icon48.png
+          test -f icons/icon128.png
           echo "✅ Struttura OK"
 
       - name: Leggi versione dal manifest
@@ -38,7 +41,18 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Versione: $VERSION"
 
-      - name: Crea ZIP
+      - name: Verifica tag corrisponde a versione
+        run: |
+          TAG="${{ github.ref_name }}"
+          TAG_NO_V="${TAG#v}"
+          MANIFEST_V="${{ steps.version.outputs.version }}"
+          if [ "$TAG_NO_V" != "$MANIFEST_V" ]; then
+            echo "❌ Tag ($TAG_NO_V) diverso da manifest version ($MANIFEST_V)"
+            exit 1
+          fi
+          echo "✅ Tag e versione corrispondono"
+
+      - name: Crea ZIP (solo file necessari per AMO)
         run: |
           zip -r stream-community-player.zip \
             manifest.json \
@@ -57,10 +71,10 @@ jobs:
             --source-dir=. \
             --artifacts-dir=web-ext-artifacts \
             --channel=listed \
-            --api-key=$WEB_EXT_API_KEY \
-            --api-secret=$WEB_EXT_API_SECRET \
+            --api-key="$WEB_EXT_API_KEY" \
+            --api-secret="$WEB_EXT_API_SECRET" \
             --no-config-discovery \
-            --ignore-files=".github/**" "tools/**" "install.html" "README.md" "LICENSE" "CHANGELOG.md" "*.zip"
+            --ignore-files=".github/**" "tools/**" "install.html" "README.md" "LICENSE" "CHANGELOG.md" "PRIVACY.md" "*.zip" "web-ext-artifacts/**" ".gitignore"
 
       - name: Crea GitHub Release
         uses: softprops/action-gh-release@v2
@@ -73,20 +87,17 @@ jobs:
             ## 🎬 Stream Community Player v${{ steps.version.outputs.version }}
 
             ### 📦 Installazione
-            - **Firefox**: [Installa da AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
-            - **Brave / Chrome / Edge**: Scarica `stream-community-player.zip`, estrailo e caricalo da `chrome://extensions` con Modalità sviluppatore
+
+            **Firefox** (automatica):
+            👉 [Installa da AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
+
+            **Brave / Chrome / Edge** (manuale):
+            1. Scarica `stream-community-player.zip` qui sotto
+            2. Estrai in una cartella
+            3. Vai su `chrome://extensions` o `brave://extensions`
+            4. Attiva **Modalità sviluppatore**
+            5. Clicca **Carica estensione non pacchettizzata**
+            6. Seleziona la cartella
 
             ### ✨ Cosa c'è di nuovo
             Vedi [CHANGELOG.md](CHANGELOG.md)
-
-      - name: Pubblica su Edge Add-ons (opzionale)
-        if: ${{ secrets.EDGE_API_KEY != '' }}
-        uses: birchill/edge-addon-upload@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          addon_file: stream-community-player.zip
-          api_key: ${{ secrets.EDGE_API_KEY }}
-          client_id: ${{ secrets.EDGE_CLIENT_ID }}
-          product_id: ${{ secrets.EDGE_PRODUCT_ID }}
-        continue-on-error: true
