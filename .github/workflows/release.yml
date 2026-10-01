@@ -5,7 +5,6 @@ on:
     branches:
       - main
     paths:
-      - 'manifest.json'
       - 'src/**'
       - 'icons/**'
   workflow_dispatch:
@@ -14,45 +13,16 @@ permissions:
   contents: write
 
 jobs:
-  detect-version:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.check.outputs.version }}
-      should_release: ${{ steps.check.outputs.should_release }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Verifica se la versione è nuova
-        id: check
-        run: |
-          VERSION=$(node -p "require('./manifest.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "ℹ️ Tag v$VERSION già esistente — skip release"
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Nuova versione rilevata: v$VERSION"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          fi
-
   build-and-release:
-    needs: detect-version
-    if: needs.detect-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    # Skip se il commit è stato fatto dal bot (evita loop)
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip release]')"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -73,12 +43,50 @@ jobs:
           test -f icons/icon128.png
           echo "✅ Struttura OK"
 
-      - name: Leggi versione
-        id: version
+      - name: Incrementa versione automaticamente
+        id: bump
         run: |
-          VERSION=$(node -p "require('./manifest.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Versione: $VERSION"
+          # Leggi il messaggio di commit
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+
+          # Determina il tipo di bump dal messaggio di commit
+          BUMP_TYPE="patch"
+          if echo "$COMMIT_MSG" | grep -qi "\[major\]"; then
+            BUMP_TYPE="major"
+          elif echo "$COMMIT_MSG" | grep -qi "\[minor\]"; then
+            BUMP_TYPE="minor"
+          fi
+          echo "📈 Tipo di bump: $BUMP_TYPE"
+
+          # Calcola nuova versione
+          OLD_VERSION=$(node -p "require('./manifest.json').version")
+          NEW_VERSION=$(node -e "
+            const v = '$OLD_VERSION'.split('.').map(Number);
+            const type = '$BUMP_TYPE';
+            if (type === 'major') console.log((v[0]+1) + '.0.0');
+            else if (type === 'minor') console.log(v[0] + '.' + (v[1]+1) + '.0');
+            else console.log(v[0] + '.' + v[1] + '.' + (v[2]+1));
+          ")
+
+          echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Versione: $OLD_VERSION → $NEW_VERSION"
+
+          # Aggiorna manifest.json
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            m.version = '$NEW_VERSION';
+            fs.writeFileSync('manifest.json', JSON.stringify(m, null, 2) + '\n');
+          "
+
+      - name: Commit e push della nuova versione
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.version }} [skip ci]"
+          git push origin main
 
       - name: Crea ZIP per il rilascio
         run: |
@@ -102,31 +110,26 @@ jobs:
             --api-key="$WEB_EXT_API_KEY" \
             --api-secret="$WEB_EXT_API_SECRET" \
             --no-config-discovery \
-            --ignore-files=".github/**" "tools/**" "install.html" "README.md" "LICENSE" "CHANGELOG.md" "PRIVACY.md" "*.zip" "web-ext-artifacts/**" ".gitignore"
-
-      - name: Configura Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+            --ignore-files=".github/**" "tools/**" "install.html" "index.html" "README.md" "LICENSE" "CHANGELOG.md" "PRIVACY.md" "*.zip" "web-ext-artifacts/**" ".gitignore"
 
       - name: Crea tag automatico
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
+          TAG="v${{ steps.bump.outputs.version }}"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
-          echo "✅ Tag $TAG creato e pushato"
+          echo "✅ Tag $TAG creato"
 
       - name: Crea GitHub Release con allegati
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: "Stream Community Player v${{ steps.version.outputs.version }}"
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: "Stream Community Player v${{ steps.bump.outputs.version }}"
           files: |
             stream-community-player.zip
             web-ext-artifacts/*.xpi
           generate_release_notes: true
           body: |
-            ## 🎬 Stream Community Player v${{ steps.version.outputs.version }}
+            ## 🎬 Stream Community Player v${{ steps.bump.outputs.version }}
 
             ### 📦 Installazione
 
@@ -143,3 +146,6 @@ jobs:
 
             ### ✨ Cosa c'è di nuovo
             Vedi [CHANGELOG.md](https://github.com/Kittystyle850/stream-community-player/blob/main/CHANGELOG.md)
+
+            ### 🔄 Aggiornamento automatico
+            Se hai già l'estensione installata, riceverai l'aggiornamento automaticamente entro 24 ore.
