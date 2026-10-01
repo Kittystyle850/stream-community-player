@@ -4,17 +4,21 @@ on:
   push:
     tags:
       - 'v*'
-      - '[0-9]*'
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Verifica struttura
         run: |
@@ -27,32 +31,62 @@ jobs:
           test -d icons
           echo "✅ Struttura OK"
 
+      - name: Leggi versione dal manifest
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Versione: $VERSION"
+
       - name: Crea ZIP
         run: |
           zip -r stream-community-player.zip \
             manifest.json \
             src/ \
-            icons/ \
-            README.md \
-            LICENSE \
-            CHANGELOG.md
+            icons/
 
-      - name: Crea Release
+      - name: Installa web-ext
+        run: npm install -g web-ext
+
+      - name: Firma e pubblica su Firefox AMO
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          web-ext sign \
+            --source-dir=. \
+            --artifacts-dir=web-ext-artifacts \
+            --channel=listed \
+            --api-key=$WEB_EXT_API_KEY \
+            --api-secret=$WEB_EXT_API_SECRET \
+            --no-config-discovery \
+            --ignore-files=".github/**" "tools/**" "install.html" "README.md" "LICENSE" "CHANGELOG.md" "*.zip"
+
+      - name: Crea GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: stream-community-player.zip
+          files: |
+            stream-community-player.zip
+            web-ext-artifacts/*.xpi
           generate_release_notes: true
           body: |
-            ## 🎬 Stream Community Player ${{ github.ref_name }}
+            ## 🎬 Stream Community Player v${{ steps.version.outputs.version }}
 
-            ### Installazione rapida
-            1. Scarica `stream-community-player.zip` qui sotto
-            2. Estrai in una cartella
-            3. Apri `chrome://extensions`
-            4. Attiva **Modalità sviluppatore**
-            5. Clicca **Carica estensione non pacchettizzata**
-            6. Seleziona la cartella estratta
-            7. Ricarica StreamingCommunity ✅
+            ### 📦 Installazione
+            - **Firefox**: [Installa da AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
+            - **Brave / Chrome / Edge**: Scarica `stream-community-player.zip`, estrailo e caricalo da `chrome://extensions` con Modalità sviluppatore
 
-            ### Cosa c'è di nuovo
-            Vedi il changelog completo nel repository.
+            ### ✨ Cosa c'è di nuovo
+            Vedi [CHANGELOG.md](CHANGELOG.md)
+
+      - name: Pubblica su Edge Add-ons (opzionale)
+        if: ${{ secrets.EDGE_API_KEY != '' }}
+        uses: birchill/edge-addon-upload@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          addon_file: stream-community-player.zip
+          api_key: ${{ secrets.EDGE_API_KEY }}
+          client_id: ${{ secrets.EDGE_CLIENT_ID }}
+          product_id: ${{ secrets.EDGE_PRODUCT_ID }}
+        continue-on-error: true
