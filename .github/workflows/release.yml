@@ -1,4 +1,4 @@
-name: Auto Release & Publish
+name: Auto Release
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/**'
       - 'icons/**'
+      - 'manifest.json'
   workflow_dispatch:
 
 permissions:
@@ -15,14 +16,12 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    # Skip se il commit è stato fatto dal bot (evita loop)
     if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip release]')"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -46,10 +45,8 @@ jobs:
       - name: Incrementa versione automaticamente
         id: bump
         run: |
-          # Leggi il messaggio di commit
           COMMIT_MSG="${{ github.event.head_commit.message }}"
 
-          # Determina il tipo di bump dal messaggio di commit
           BUMP_TYPE="patch"
           if echo "$COMMIT_MSG" | grep -qi "\[major\]"; then
             BUMP_TYPE="major"
@@ -58,7 +55,6 @@ jobs:
           fi
           echo "📈 Tipo di bump: $BUMP_TYPE"
 
-          # Calcola nuova versione
           OLD_VERSION=$(node -p "require('./manifest.json').version")
           NEW_VERSION=$(node -e "
             const v = '$OLD_VERSION'.split('.').map(Number);
@@ -72,7 +68,6 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 Versione: $OLD_VERSION → $NEW_VERSION"
 
-          # Aggiorna manifest.json
           node -e "
             const fs = require('fs');
             const m = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
@@ -88,29 +83,12 @@ jobs:
           git commit -m "chore: bump version to v${{ steps.bump.outputs.version }} [skip ci]"
           git push origin main
 
-      - name: Crea ZIP per il rilascio
+      - name: Crea ZIP
         run: |
           zip -r stream-community-player.zip \
             manifest.json \
             src/ \
             icons/
-
-      - name: Installa web-ext
-        run: npm install -g web-ext
-
-      - name: Firma e pubblica su Firefox AMO
-        env:
-          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
-          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-        run: |
-          web-ext sign \
-            --source-dir=. \
-            --artifacts-dir=web-ext-artifacts \
-            --channel=listed \
-            --api-key="$WEB_EXT_API_KEY" \
-            --api-secret="$WEB_EXT_API_SECRET" \
-            --no-config-discovery \
-            --ignore-files=".github/**" "tools/**" "install.html" "index.html" "README.md" "LICENSE" "CHANGELOG.md" "PRIVACY.md" "*.zip" "web-ext-artifacts/**" ".gitignore"
 
       - name: Crea tag automatico
         run: |
@@ -119,22 +97,18 @@ jobs:
           git push origin "$TAG"
           echo "✅ Tag $TAG creato"
 
-      - name: Crea GitHub Release con allegati
+      - name: Crea GitHub Release con ZIP allegato
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: "Stream Community Player v${{ steps.bump.outputs.version }}"
           files: |
             stream-community-player.zip
-            web-ext-artifacts/*.xpi
           generate_release_notes: true
           body: |
             ## 🎬 Stream Community Player v${{ steps.bump.outputs.version }}
 
             ### 📦 Installazione
-
-            **Firefox** (automatica):
-            👉 [Installa da Firefox AMO](https://addons.mozilla.org/firefox/addon/stream-community-player/)
 
             **Brave / Chrome / Edge** (manuale):
             1. Scarica `stream-community-player.zip` qui sotto
@@ -146,6 +120,3 @@ jobs:
 
             ### ✨ Cosa c'è di nuovo
             Vedi [CHANGELOG.md](https://github.com/Kittystyle850/stream-community-player/blob/main/CHANGELOG.md)
-
-            ### 🔄 Aggiornamento automatico
-            Se hai già l'estensione installata, riceverai l'aggiornamento automaticamente entro 24 ore.
