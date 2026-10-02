@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Stream Community Player",
   "short_name": "SC Player",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Player stile Netflix per StreamingCommunity e VixCloud: fullscreen automatico, autoplay con audio, UI moderna, risoluzioni reali.",
   "author": "Kittystyle850",
   "homepage_url": "https://github.com/Kittystyle850/stream-community-player",
